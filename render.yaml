@@ -1,0 +1,68 @@
+# Render Blueprint: Evolution API v2.3.7 + Postgres + Key Value (Redis)
+# Mirrors the local ~/hooze-stack evolution-* services.
+# Secrets are NOT in this file. Render prompts for them (sync: false).
+# Check plan names against the Render dashboard; they change over time.
+
+databases:
+  - name: evolution-postgres
+    databaseName: evolution
+    user: evolution
+    plan: basic-256mb        # paid; free Postgres expires after 30 days
+    region: frankfurt        # closest Render region to Nigeria
+    ipAllowList: []          # private network only
+
+services:
+  - type: keyvalue
+    name: evolution-redis
+    plan: starter            # paid; free Key Value has no persistence
+    region: frankfurt
+    maxmemoryPolicy: noeviction
+    ipAllowList: []          # private network only
+
+  - type: web
+    name: evolution-api
+    runtime: image
+    image:
+      url: docker.io/evoapicloud/evolution-api:v2.3.7
+    plan: starter            # paid; free spins down after 15 min idle
+    region: frankfurt
+    healthCheckPath: /
+    disk:
+      name: evolution-instances
+      mountPath: /evolution/instances   # same path as the local volume
+      sizeGB: 1
+    envVars:
+      # Render routes traffic to PORT; Evolution listens on SERVER_PORT
+      - key: PORT
+        value: "8080"
+      - key: SERVER_PORT
+        value: "8080"
+
+      # Set to the service's public URL after the first deploy, then redeploy
+      - key: SERVER_URL
+        sync: false
+      - key: AUTHENTICATION_API_KEY
+        sync: false
+
+      - key: DATABASE_ENABLED
+        value: "true"
+      - key: DATABASE_PROVIDER
+        value: postgresql
+      - key: DATABASE_CONNECTION_URI
+        fromDatabase:
+          name: evolution-postgres
+          property: connectionString
+      - key: DATABASE_CONNECTION_CLIENT_NAME
+        value: evolution_render
+
+      - key: CACHE_REDIS_ENABLED
+        value: "true"
+      - key: CACHE_REDIS_URI
+        fromService:
+          type: keyvalue
+          name: evolution-redis
+          property: connectionString
+      - key: CACHE_REDIS_PREFIX_KEY
+        value: evolution
+      - key: CACHE_LOCAL_ENABLED
+        value: "false"
